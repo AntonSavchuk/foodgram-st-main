@@ -1,18 +1,21 @@
-from django.core.validators import MinValueValidator
-from django.db import models
-from users.models import User
+"""Модели приложения 'formulas': рецепты, ингредиенты, корзина и избранное."""
+
+from django.core.validators import MinValueValidator  # валидация числовых значений
+from django.db import models  # базовые инструменты ORM
+from users.models import User  # кастомная модель пользователя
 
 
 class Ingredient(models.Model):
+    """Модель ингредиента с названием и единицей измерения."""
 
-    name = models.CharField(max_length=128,
-                            verbose_name="Название",
-                        )
-    
+    name = models.CharField(
+        max_length=128,
+        verbose_name="Название",
+    )
     measurement_unit = models.CharField(
-                                        max_length=64,
-                                        verbose_name="Ед. изм.",
-                                    )
+        max_length=64,
+        verbose_name="Ед. изм.",
+    )
 
     class Meta:
         ordering = ("name",)
@@ -26,46 +29,42 @@ class Ingredient(models.Model):
         ]
 
     def __str__(self):
+        """Строковое представление ингредиента."""
         return f"{self.name} ({self.measurement_unit})"
 
 
 class Dish(models.Model):
+    """Модель рецепта: содержит описание, автора, ингредиенты и время готовки."""
 
     title = models.CharField(
-                                max_length=256,
-                                verbose_name="Название рецепта",
-                            )
-    
+        max_length=256,
+        verbose_name="Название рецепта",
+    )
     description = models.TextField(
-                                    verbose_name="Описание",
-                                )
-    
+        verbose_name="Описание",
+    )
     image = models.ImageField(
-                                upload_to="dishes/images/",
-                                verbose_name="Фото",
-                                blank=True,
-                                null=True,
-                            )
-    
+        upload_to="dishes/images/",
+        verbose_name="Фото",
+        blank=True,
+        null=True,
+    )
     creator = models.ForeignKey(
         User,
         related_name="recipes",
         on_delete=models.CASCADE,
         verbose_name="Автор",
     )
-    
     cook_time = models.PositiveIntegerField(
         validators=[MinValueValidator(1, "Минимум 1 минута")],
         verbose_name="Время приготовления, мин",
     )
-
     ingredients = models.ManyToManyField(
         Ingredient,
         through="IngredientAmount",
         related_name="dishes",
         verbose_name="Ингредиенты",
     )
-
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Дата публикации",
@@ -77,24 +76,25 @@ class Dish(models.Model):
         verbose_name_plural = "Рецепты"
 
     def __str__(self):
+        """Строковое представление рецепта."""
         return f"{self.title} (id={self.id})"
 
 
 class IngredientAmount(models.Model):
+    """Промежуточная модель: количество ингредиента в конкретном рецепте."""
+
     dish = models.ForeignKey(
         Dish,
         related_name="recipe_ingredients",
         on_delete=models.CASCADE,
         verbose_name="Рецепт",
     )
-
     ingredient = models.ForeignKey(
         Ingredient,
         related_name="ingredient_recipes",
         on_delete=models.CASCADE,
         verbose_name="Ингредиент",
     )
-
     amount = models.PositiveIntegerField(
         validators=[MinValueValidator(1, "Минимум 1")],
         verbose_name="Количество",
@@ -111,6 +111,7 @@ class IngredientAmount(models.Model):
         ]
 
     def __str__(self):
+        """Строковое представление количества ингредиента в блюде."""
         return (
             f"{self.ingredient.name} — {self.amount} "
             f"{self.ingredient.measurement_unit} для «{self.dish.title}»"
@@ -118,6 +119,7 @@ class IngredientAmount(models.Model):
 
 
 class FavoriteRecipe(models.Model):
+    """Модель избранного рецепта для конкретного пользователя."""
 
     user = models.ForeignKey(
         User,
@@ -125,7 +127,6 @@ class FavoriteRecipe(models.Model):
         on_delete=models.CASCADE,
         verbose_name="Пользователь",
     )
-
     dish = models.ForeignKey(
         Dish,
         related_name="favorites",
@@ -144,10 +145,12 @@ class FavoriteRecipe(models.Model):
         ]
 
     def __str__(self):
+        """Строковое представление избранного рецепта."""
         return f"{self.user} → {self.dish}"
 
 
 class ShoppingCartRecipe(models.Model):
+    """Модель рецептов, добавленных пользователем в корзину покупок."""
 
     user = models.ForeignKey(
         User,
@@ -155,7 +158,6 @@ class ShoppingCartRecipe(models.Model):
         on_delete=models.CASCADE,
         verbose_name="Пользователь",
     )
-    
     dish = models.ForeignKey(
         Dish,
         related_name="shoppingcarts",
@@ -174,4 +176,5 @@ class ShoppingCartRecipe(models.Model):
         ]
 
     def __str__(self):
+        """Строковое представление записи корзины."""
         return f"{self.user} → {self.dish}"

@@ -1,3 +1,5 @@
+"""Команда Django для загрузки ингредиентов из JSON-файла в базу данных."""
+
 import json
 from pathlib import Path
 
@@ -8,9 +10,15 @@ from formulas.models import Ingredient
 
 
 class Command(BaseCommand):
+    """Импортирует список ингредиентов из JSON-файла в базу данных."""
+
     help = 'Импортирует ингредиенты из JSON‑файла в базу данных'
 
     def handle(self, *args, **options):
+        """
+            Основная логика команды: чтение, парсинг и
+            сохранение ингредиентов.
+        """
         json_path = Path(settings.BASE_DIR) / 'data' / 'ingredients.json'
 
         if not json_path.exists():
