@@ -1,5 +1,5 @@
 from django.core.validators import MinValueValidator
-from djoser.serializers import UserSerializer as BaseUserSerializer
+from djoser.serializers import UserSerializer as DjoserUserSerializer
 from drf_extra_fields.fields import Base64ImageField
 from rest_framework import serializers
 
@@ -10,129 +10,150 @@ from formulas.models import (
     FavoriteRecipe,
     ShoppingCartRecipe,
 )
-from users.models import CustomUser
+from users.models import Follow
 
 
-class IngredientDataSerializer(serializers.ModelSerializer):
+class IngredientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ingredient
         fields = ("id", "name", "measurement_unit")
 
-
-class IngredientWithAmountSerializer(serializers.ModelSerializer):
-    ingredient_id = serializers.PrimaryKeyRelatedField(
+class IngredientAmountSerializer(serializers.ModelSerializer):
+    id = serializers.PrimaryKeyRelatedField(
         queryset=Ingredient.objects.all(),
-        source="ingredient"
+        source="ingredient",
     )
-    ingredient_name = serializers.ReadOnlyField(source="ingredient.name")
-    unit = serializers.ReadOnlyField(source="ingredient.measurement_unit")
+    name = serializers.CharField(
+        source="ingredient.name",
+        read_only=True,
+    )
+    measurement_unit = serializers.CharField(
+        source="ingredient.measurement_unit",
+        read_only=True,
+    )
     amount = serializers.IntegerField(
-        validators=[MinValueValidator(1, "Минимальное количество — 1")]
+        validators=[MinValueValidator(1, "Минимум 1")]
     )
 
     class Meta:
         model = IngredientAmount
-        fields = ("ingredient_id", "ingredient_name", "unit", "amount")
+        fields = ("id", "name", "measurement_unit", "amount")
 
 
-class MiniDishSerializer(serializers.ModelSerializer):
-    dish_name = serializers.CharField(source="title")
-    time_to_cook = serializers.IntegerField(source="cook_time")
-
-    class Meta:
-        model = Dish
-        fields = ("id", "dish_name", "image", "time_to_cook")
-
-
-class ExtendedUserSerializer(BaseUserSerializer):
-    profile_picture = Base64ImageField(required=False)
-    subscribed = serializers.SerializerMethodField()
-
-    class Meta(BaseUserSerializer.Meta):
-        fields = (*BaseUserSerializer.Meta.fields, "profile_picture", "subscribed")
-
-    def get_subscribed(self, user_obj):
-        request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return CustomUser.objects.filter(
-                subscriber=request.user,
-                author=user_obj
-            ).exists()
-        return False
-
-
-class AuthorWithDishesSerializer(ExtendedUserSerializer):
-    recipes = serializers.SerializerMethodField()
-    total_recipes = serializers.IntegerField(
-        source="recipes.count",
-        read_only=True
-    )
-
-    class Meta(ExtendedUserSerializer.Meta):
-        fields = (*ExtendedUserSerializer.Meta.fields, "recipes", "total_recipes")
-
-    def get_recipes(self, author_obj):
-        limit = int(self.context["request"].query_params.get("recipes_limit", 100000))
-        dishes = author_obj.recipes.all()[:limit]
-        return MiniDishSerializer(dishes, many=True).data
-
-
-class FullRecipeSerializer(serializers.ModelSerializer):
-    title = serializers.CharField(source="title")
-    description = serializers.CharField(source="description")
-    time = serializers.IntegerField(source="cook_time")
-    image = Base64ImageField()
-
-    creator = ExtendedUserSerializer(source="creator", read_only=True)
-    components = IngredientWithAmountSerializer(
-        source="recipe_ingredients",
-        many=True
-    )
-    favorited = serializers.SerializerMethodField()
-    in_cart = serializers.SerializerMethodField()
+class ShortRecipeSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="title")
+    cooking_time = serializers.IntegerField(source="cook_time")
 
     class Meta:
         model = Dish
-        fields = (
-            "id", "title", "description", "image", "creator", "time",
-            "components", "favorited", "in_cart"
-        )
+        fields = ("id", "name", "image", "cooking_time")
 
-    def _save_ingredients(self, dish, ingredient_data):
-        IngredientAmount.objects.bulk_create([
-            IngredientAmount(
-                dish=dish,
-                ingredient=item["ingredient"],
-                amount=item["amount"]
-            )
-            for item in ingredient_data
-        ])
 
-    def _is_related(self, relation_model, dish):
+class PublicUserSerializer(DjoserUserSerializer):
+    avatar = Base64ImageField(required=False)
+    is_subscribed = serializers.SerializerMethodField()
+
+    class Meta(DjoserUserSerializer.Meta):
+        fields = (*DjoserUserSerializer.Meta.fields, "avatar", "is_subscribed")
+
+    def get_is_subscribed(self, obj):
         req = self.context.get("request")
         return (
             req
             and req.user.is_authenticated
-            and relation_model.objects.filter(user=req.user, dish=dish).exists()
+            and Follow.objects.filter(
+                subscriber=req.user,
+                author=obj,
+            ).exists()
         )
 
-    def get_favorited(self, obj):
-        return self._is_related(FavoriteRecipe, obj)
 
-    def get_in_cart(self, obj):
-        return self._is_related(ShoppingCartRecipe, obj)
+class SubscribedAuthorSerializer(PublicUserSerializer):
+    recipes = serializers.SerializerMethodField()
+    recipes_count = serializers.IntegerField(
+        source="recipes.count",
+        read_only=True,
+    )
+
+    class Meta(PublicUserSerializer.Meta):
+        fields = (
+            *PublicUserSerializer.Meta.fields,
+            "recipes",
+            "recipes_count",
+        )
+
+    def get_recipes(self, author):
+        limit = int(
+            self.context["request"].query_params.get("recipes_limit", 10**10)
+        )
+        qs = author.recipes.all()[:limit]
+        return ShortRecipeSerializer(qs, many=True).data
+
+class RecipeSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="title")
+    text = serializers.CharField(source="description")
+    cooking_time = serializers.IntegerField(source="cook_time")
+
+    author = PublicUserSerializer(source="creator", read_only=True)
+    ingredients = IngredientAmountSerializer(
+        source="recipe_ingredients",
+        many=True,
+    )
+    image = Base64ImageField()
+
+    is_favorited = serializers.SerializerMethodField()
+    is_in_shopping_cart = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Dish
+        fields = (
+            "id",
+            "name",
+            "text",
+            "image",
+            "author",
+            "cooking_time",
+            "ingredients",
+            "is_favorited",
+            "is_in_shopping_cart",
+        )
+
+    @staticmethod
+    def _bulk_save_ingredients(dish, items):
+        IngredientAmount.objects.bulk_create(
+            IngredientAmount(
+                dish=dish,
+                ingredient=item["ingredient"],
+                amount=item["amount"],
+            )
+            for item in items
+        )
+
+    def _flag(self, model, dish):
+        req = self.context.get("request")
+        return (
+            req
+            and req.user.is_authenticated
+            and model.objects.filter(user=req.user, dish=dish).exists()
+        )
+
+    def get_is_favorited(self, obj):
+        return self._flag(FavoriteRecipe, obj)
+
+    def get_is_in_shopping_cart(self, obj):
+        return self._flag(ShoppingCartRecipe, obj)
 
     def create(self, validated_data):
         ingredients = validated_data.pop("recipe_ingredients", [])
-        new_dish = Dish.objects.create(**validated_data)
-        self._save_ingredients(new_dish, ingredients)
-        return new_dish
+        dish = Dish.objects.create(**validated_data)
+        self._bulk_save_ingredients(dish, ingredients)
+        return dish
 
     def update(self, instance, validated_data):
-        new_ingredients = validated_data.pop("recipe_ingredients", [])
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
+        ingredients = validated_data.pop("recipe_ingredients", [])
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
         instance.save()
         instance.recipe_ingredients.all().delete()
-        self._save_ingredients(instance, new_ingredients)
+        self._bulk_save_ingredients(instance, ingredients)
         return instance

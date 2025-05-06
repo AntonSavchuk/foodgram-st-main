@@ -1,11 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import UserProfile, UserSubscription
+from .models import CustomUser, Follow
 
 
-@admin.register(UserProfile)
+@admin.register(CustomUser)
 class CustomUserAdmin(UserAdmin):
-
     list_display = (
         'id',
         'email',
@@ -18,9 +17,8 @@ class CustomUserAdmin(UserAdmin):
     ordering = ('id',)
 
 
-@admin.register(UserSubscription)
-class UserSubscriptionAdmin(admin.ModelAdmin):
-
-    list_display = ('subscriber', 'author')
-    search_fields = ('subscriber__email', 'author__email')
-    list_filter = ('subscriber',)
+@admin.register(Follow)
+class FollowAdmin(admin.ModelAdmin):
+    list_display = ('follower', 'following')
+    search_fields = ('follower__email', 'following__email')
+    list_filter = ('follower',)

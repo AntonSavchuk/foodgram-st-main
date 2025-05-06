@@ -44,8 +44,9 @@ INSTALLED_APPS = [
     
     "api.apps.ApiConfig",
     "formulas.apps.FormulasConfig",
+    "users.apps.UsersConfig",
 
-     "rest_framework",
+    "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
     "djoser",
@@ -127,7 +128,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-
+AUTH_USER_MODEL = 'users.CustomUser'
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
@@ -150,7 +151,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
-    "DEFAULT_PAGINATION_CLASS": "api.pagination.LimitPageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "api.pagination.CustomPagination",
     "PAGE_SIZE": 6,
 }
 
