@@ -69,7 +69,10 @@ class RecipeViewSet(viewsets.ModelViewSet):
             obj, created = model.objects.get_or_create(user=request.user, dish=dish)
             if not created:
                 raise ValidationError({"error": "Уже добавлено"})
-            return Response(ShortRecipeSerializer(dish).data, status=status.HTTP_201_CREATED)
+            return Response(
+                ShortRecipeSerializer(dish).data,
+                status=status.HTTP_201_CREATED
+            )
         model.objects.filter(user=request.user, dish=dish).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
