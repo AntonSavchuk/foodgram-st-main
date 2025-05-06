@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    
+
     "api.apps.ApiConfig",
     "formulas.apps.FormulasConfig",
     "users.apps.UsersConfig",
@@ -172,4 +172,3 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost,http://127.0.0.1"
 ).split(",")
-
