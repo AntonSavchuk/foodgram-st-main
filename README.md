@@ -18,8 +18,8 @@
 ### 1. Клонируйте репозиторий:
 
 ```bash
-git clone <your_repo_url>
-cd <repo_dir>
+git clone https://github.com/AntonSavchuk/foodgram-st-main
+cd foodgram-st-main
 ```
 
 ### 2. Создайте файл `.env` в корне проекта:
@@ -61,7 +61,7 @@ docker-compose exec backend python manage.py load_ing
 
 ---
 
-## очки доступа
+## точки доступа
 
 | URL                                                                              | Описание                         |
 | -------------------------------------------------------------------------------- | -------------------------------- |
@@ -111,4 +111,5 @@ docker-compose down -v
 ## Автор
 
 **Савчук Антон** создан для учебных и демонстрационных целей.
+[Telegram](https://t.me/your_username)
 
