@@ -6,41 +6,32 @@ from drf_extra_fields.fields import Base64ImageField
 from rest_framework import serializers
 
 from formulas.models import (
+    UserAccount,
+    Follow,
     Ingredient,
     Dish,
     IngredientAmount,
     FavoriteRecipe,
-    ShoppingCartRecipe,
+    ShoppingCart,
 )
-from users.models import Follow
 
 
 class IngredientSerializer(serializers.ModelSerializer):
     """Сериализатор для модели ингредиента."""
-
     class Meta:
         model = Ingredient
         fields = ("id", "name", "measurement_unit")
 
 
 class IngredientAmountSerializer(serializers.ModelSerializer):
-    """Сериализатор для отображения количества ингредиентов в рецепте."""
-
+    """Сериализатор количества ингредиента в рецепте (универсальный)."""
     id = serializers.PrimaryKeyRelatedField(
         queryset=Ingredient.objects.all(),
         source="ingredient",
     )
-    name = serializers.CharField(
-        source="ingredient.name",
-        read_only=True,
-    )
-    measurement_unit = serializers.CharField(
-        source="ingredient.measurement_unit",
-        read_only=True,
-    )
-    amount = serializers.IntegerField(
-        validators=[MinValueValidator(1, "Минимум 1")]
-    )
+    name = serializers.ReadOnlyField(source="ingredient.name")
+    measurement_unit = serializers.ReadOnlyField(source="ingredient.measurement_unit")
+    amount = serializers.IntegerField(min_value=1)
 
     class Meta:
         model = IngredientAmount
@@ -50,73 +41,47 @@ class IngredientAmountSerializer(serializers.ModelSerializer):
 class ShortRecipeSerializer(serializers.ModelSerializer):
     """Краткое представление рецепта для подписок и списков."""
 
-    name = serializers.CharField(source="title")
-    cooking_time = serializers.IntegerField(source="cook_time")
-
     class Meta:
         model = Dish
-        fields = ("id", "name", "image", "cooking_time")
+        fields = ("id", "title", "image", "cook_time")
+        read_only_fields = fields
 
 
 class PublicUserSerializer(DjoserUserSerializer):
-    """Сериализатор пользователя с полем подписки и аватаром."""
-
-    avatar = Base64ImageField(required=False)
+    """Сериализатор пользователя с полем подписки."""
     is_subscribed = serializers.SerializerMethodField()
 
-    class Meta(DjoserUserSerializer.Meta):
-        fields = (*DjoserUserSerializer.Meta.fields, "avatar", "is_subscribed")
-
-    def get_is_subscribed(self, obj):
-        """Возвращает True, если текущий пользователь подписан на obj."""
-        req = self.context.get("request")
-        return (
-            req
-            and req.user.is_authenticated
-            and Follow.objects.filter(
-                follower=req.user,
-                following=obj,
-            ).exists()
+    class Meta:
+        model = UserAccount
+        fields = (
+            "id",
+            "email",
+            "username",
+            "first_name",
+            "last_name",
+            "is_subscribed",
         )
 
+    def get_is_subscribed(self, user):
+        request = self.context.get("request")
+        return (
+            request
+            and request.user.is_authenticated
+            and Follow.objects.filter(follower=request.user, following=user).exists()
+        )
 
-class SubscribedAuthorSerializer(PublicUserSerializer):
-    """Сериализатор автора с рецептами и их количеством."""
-
-    recipes = serializers.SerializerMethodField()
-    recipes_count = serializers.IntegerField(
-        source="recipes.count",
+class DishReadSerializer(serializers.ModelSerializer):
+    """Сериализатор рецепта для чтения."""
+    creator = serializers.SlugRelatedField(
+        slug_field="username",
         read_only=True,
     )
-
-    class Meta(PublicUserSerializer.Meta):
-        fields = (
-            *PublicUserSerializer.Meta.fields,
-            "recipes",
-            "recipes_count",
-        )
-
-    def get_recipes(self, author):
-        """Возвращает список рецептов автора, ограниченный параметром limit."""
-        limit = int(
-            self.context["request"].query_params.get("recipes_limit", 10**10)
-        )
-        qs = author.recipes.all()[:limit]
-        return ShortRecipeSerializer(qs, many=True).data
-
-
-class RecipeSerializer(serializers.ModelSerializer):
-    """Полный сериализатор рецепта с ингредиентами, автором и статусами."""
-
-    name = serializers.CharField(source="title")
-    text = serializers.CharField(source="description")
-    cooking_time = serializers.IntegerField(source="cook_time")
-    author = PublicUserSerializer(source="creator", read_only=True)
     ingredients = IngredientAmountSerializer(
         source="recipe_ingredients",
         many=True,
+        read_only=True
     )
-    image = Base64ImageField()
+    image = Base64ImageField(read_only=True)
     is_favorited = serializers.SerializerMethodField()
     is_in_shopping_cart = serializers.SerializerMethodField()
 
@@ -124,19 +89,107 @@ class RecipeSerializer(serializers.ModelSerializer):
         model = Dish
         fields = (
             "id",
-            "name",
-            "text",
+            "title",
+            "description",
             "image",
-            "author",
-            "cooking_time",
+            "creator",
+            "cook_time",
             "ingredients",
             "is_favorited",
             "is_in_shopping_cart",
         )
 
+    def get_is_favorited(self, dish):
+        user = self.context["request"].user
+        return (
+            user.is_authenticated
+            and FavoriteRecipe.objects.filter(user=user, dish=dish).exists()
+        )
+
+    def get_is_in_shopping_cart(self, dish):
+        user = self.context["request"].user
+        return (
+            user.is_authenticated
+            and ShoppingCart.objects.filter(user=user, dish=dish).exists()
+        )
+
+
+class SubscribedAuthorSerializer(PublicUserSerializer):
+    """Сериализатор автора с рецептами и их количеством."""
+    recipes = serializers.SerializerMethodField()
+    recipes_count = serializers.IntegerField(source="dish.count", read_only=True)
+
+    class Meta(PublicUserSerializer.Meta):
+        fields = (*PublicUserSerializer.Meta.fields, "recipes", "recipes_count")
+
+    def get_recipes(self, author):
+        request = self.context["request"]
+        limit = int(request.GET.get("recipes_limit", 10**10))
+        return ShortRecipeSerializer(author.dish.all()[:limit], many=True).data
+
+
+class RecipeReadSerializer(serializers.ModelSerializer):
+    """Сериализатор рецепта для чтения."""
+    author = PublicUserSerializer(source="creator", read_only=True)
+    ingredients = IngredientAmountSerializer(
+        source="recipe_ingredients",
+        many=True,
+        read_only=True
+    )
+    is_favorited = serializers.SerializerMethodField()
+    is_in_shopping_cart = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Dish
+        fields = (
+            "id",
+            "title",
+            "description",
+            "image",
+            "creator",
+            "cook_time",
+            "ingredients",
+            "is_favorited",
+            "is_in_shopping_cart",
+        )
+        read_only_fields = fields
+
+    def get_is_favorited(self, recipe):
+        request = self.context.get("request")
+        return (
+            request
+            and request.user.is_authenticated
+            and FavoriteRecipe.objects.filter(user=request.user, dish=recipe).exists()
+        )
+
+    def get_is_in_shopping_cart(self, recipe):
+        request = self.context.get("request")
+        return (
+            request
+            and request.user.is_authenticated
+            and ShoppingCart.objects.filter(user=request.user, dish=recipe).exists()
+        )
+
+
+class RecipeWriteSerializer(serializers.ModelSerializer):
+    """Сериализатор рецепта для создания и редактирования."""
+    cooking_time = serializers.IntegerField(source="cook_time", min_value=1)
+    ingredients = IngredientAmountSerializer(source="recipe_ingredients", many=True)
+    image = Base64ImageField()
+
+    class Meta:
+        model = Dish
+        fields = (
+            "id",
+            "title",
+            "description",
+            "image",
+            "cook_time",
+            "recipe_ingredients",
+        )
+
     @staticmethod
     def _bulk_save_ingredients(dish, items):
-        """Сохраняет список ингредиентов в связанную таблицу через bulk_create."""
         IngredientAmount.objects.bulk_create(
             IngredientAmount(
                 dish=dish,
@@ -146,36 +199,15 @@ class RecipeSerializer(serializers.ModelSerializer):
             for item in items
         )
 
-    def _flag(self, model, dish):
-        """Универсальная проверка: находится ли рецепт в указанной модели."""
-        req = self.context.get("request")
-        return (
-            req
-            and req.user.is_authenticated
-            and model.objects.filter(user=req.user, dish=dish).exists()
-        )
-
-    def get_is_favorited(self, obj):
-        """Возвращает True, если рецепт в избранном у пользователя."""
-        return self._flag(FavoriteRecipe, obj)
-
-    def get_is_in_shopping_cart(self, obj):
-        """Возвращает True, если рецепт в корзине пользователя."""
-        return self._flag(ShoppingCartRecipe, obj)
-
     def create(self, validated_data):
-        """Создаёт новый рецепт с вложенными ингредиентами."""
         ingredients = validated_data.pop("recipe_ingredients", [])
-        dish = Dish.objects.create(**validated_data)
+        dish = super().create(validated_data)
         self._bulk_save_ingredients(dish, ingredients)
         return dish
 
     def update(self, instance, validated_data):
-        """Обновляет рецепт и его ингредиенты."""
         ingredients = validated_data.pop("recipe_ingredients", [])
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
         instance.recipe_ingredients.all().delete()
-        self._bulk_save_ingredients(instance, ingredients)
-        return instance
+        dish = super().update(instance, validated_data)
+        self._bulk_save_ingredients(dish, ingredients)
+        return dish

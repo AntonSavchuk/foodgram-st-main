@@ -13,9 +13,4 @@ api_router.register(r"recipes", RecipeViewSet, basename="recipes")
 urlpatterns = [
     path("", include(api_router.urls)),
     path("auth/", include("djoser.urls.authtoken")),
-    path(
-        "shortcut/<int:pk>/",
-        RecipeViewSet.as_view({"get": "get_short_link"}),
-        name="dish-shortcut"
-    ),
 ]

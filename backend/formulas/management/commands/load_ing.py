@@ -5,39 +5,34 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
-
 from formulas.models import Ingredient
 
 
 class Command(BaseCommand):
-    """Импортирует список ингредиентов из JSON-файла в базу данных."""
-
     help = 'Импортирует ингредиенты из JSON‑файла в базу данных'
 
     def handle(self, *args, **options):
-        """
-            Основная логика команды: чтение, парсинг и
-            сохранение ингредиентов.
-        """
-        json_path = Path(settings.BASE_DIR) / 'data' / 'ingredients.json'
-
-        if not json_path.exists():
-            self.stderr.write(self.style.ERROR(f'Не найден файл: {json_path}'))
-            return
-
         try:
-            raw = json_path.read_text(encoding='utf-8')
-            items = json.loads(raw)
-        except Exception as e:
-            self.stderr.write(self.style.ERROR(f'Ошибка при чтении JSON: {e}'))
-            return
+            json_path = Path(settings.BASE_DIR) / 'data' / 'ingredients.json'
+            with json_path.open(encoding='utf-8') as file:
+                data = json.load(file)
 
-        objs = [Ingredient(**data) for data in items]
-        created = Ingredient.objects.bulk_create(objs)
+            unique = {
+                (item['name'].strip().lower(), item['measurement_unit'].strip().lower()): item
+                for item in data
+            }.values()
 
-        count = len(created)
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Загружено {count} ингредиентов."
+            created = Ingredient.objects.bulk_create(
+                [Ingredient(**item) for item in unique],
+                ignore_conflicts=True
             )
-        )
+
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Успешно загружено {len(created)} ингредиентов из файла: {json_path.name}"
+                )
+            )
+        except Exception as e:
+            self.stderr.write(self.style.ERROR(
+                f"Ошибка при загрузке файла {json_path.name}: {e}"
+            ))

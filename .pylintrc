@@ -1,0 +1,29 @@
+[MASTER]
+load-plugins =
+    pylint_django
+
+[MESSAGES CONTROL]
+# Отключаем частые ложные срабатывания
+disable =
+    missing-docstring,
+    invalid-name,
+    too-few-public-methods,
+    no-member,
+    no-self-use,
+    too-many-ancestors
+
+[TYPECHECK]
+# Игнорировать \"магические\" члены моделей Django
+generated-members =
+    objects,
+    does_not_exist,
+    _meta,
+    save,
+    delete,
+    serialize,
+    get_absolute_url,
+    id,
+    pk
+
+[FORMAT]
+max-line-length = 100
